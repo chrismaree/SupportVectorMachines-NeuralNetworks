@@ -1,0 +1,53 @@
+---
+title: "Ensemble Joiner"
+output:
+  pdf_document: default
+  html_notebook: default
+---
+This notebook takes in the "votes" from the two sets of methods, stored as csv files and joines them together taking the mean values.
+
+```{r}
+suppressMessages(library(caret))
+Mode <- function(x) {
+  ux <- unique(x)
+  ux[which.max(tabulate(match(x, ux)))]
+}
+```
+
+
+```{r}
+svm_predictions <- read.csv("EnsambleVotesQuestion1.csv")
+svm_predictions <- svm_predictions[, -1]
+svm_predictions <- as.matrix(unname(svm_predictions))
+
+nn_predictions <- read.csv("EnsambleVotesQuestion2.csv")
+nn_predictions <- nn_predictions[, -1]
+nn_predictions <- as.matrix(unname(nn_predictions))
+
+combindMatrix <- rbind(svm_predictions, nn_predictions)
+
+modevalues <- apply(combindMatrix, 2, Mode)
+
+
+```
+
+Next we need to get the prediction results so we can get our confusion matrix. Here we will read in the data the same way I did for each question. Note that if the input to the ensemblerBuilder is an unlabled set then you can skip this step and rather directly run the saving of the csv file with the generated lables. This is done as follows: `write.csv(modevalues, file = "NoLables_PredictedResults.csv")`
+```{r}
+fulldata <- read.csv("blocksTrain.csv")
+fulldata <- fulldata[, -1]
+
+#convert class to a factor
+fulldata$class <- as.factor(fulldata$class)
+#normalize variables
+#extract traning and validation stes
+set.seed(42)
+train <- sample(seq_len(nrow(fulldata)),
+                size = ceiling(dim(fulldata)[1]*0.8)) #~80% of the set
+Blocks.train <- fulldata[train, ] 
+Blocks.validation <- fulldata[-train, ]
+
+confusionMatrix(as.factor(modevalues), Blocks.validation$class)
+
+
+```
+

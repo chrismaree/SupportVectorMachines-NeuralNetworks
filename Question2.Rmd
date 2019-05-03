@@ -1,0 +1,583 @@
+---
+title: "Question 2"
+output:
+  pdf_document: default
+  html_notebook: default
+editor_options:
+  chunk_output_type: inline
+---
+
+\section{Question 2: Neural Networks}
+This appendix starts with importing the required libraries then preforming data processing. Next, a basic example using the h2o library is shown, outlining a simple use case. After this a number of diffrent model refinement techniques are applied and stored in a datastructure to be printed and plotted later.
+
+\section{Libraries}
+```{r, echo=T, results='hide'}
+#setup work space, install packages and import libs
+suppressMessages(library(h2o))
+suppressMessages(library(caret))
+suppressMessages(library(mlbench))
+suppressMessages(library(ggplot2))
+suppressMessages(library(reshape2))
+suppressMessages(library(DEEPR))
+rm(list=ls())
+fulldata <- read.csv("blocksTrain.csv")
+fulldata <- fulldata[, -1]
+
+suppressMessages(h2o.init(max_mem_size = "15g"))
+knitr::opts_chunk$set(message = FALSE)
+```
+
+\section{Data Processing}
+Read data, process it and create a h2o data object to be used later on.
+```{r, echo=T, results='hide'}
+#convert class to a factor
+fulldata$class <- as.factor(fulldata$class)
+#normalize variables
+fulldata[,1:10] <- scale(fulldata[,1:10])
+#extract traning and validation stes
+set.seed(42)
+train <- sample(seq_len(nrow(fulldata)),
+                size = ceiling(dim(fulldata)[1]*0.8)) #~80% of the set
+Blocks.train <- fulldata[train, ] 
+Blocks.validation <- fulldata[-train, ]
+
+datTrain_h2o <- as.h2o(Blocks.train)
+datValidation_h2o = as.h2o(Blocks.validation)
+
+ensamble <- data.frame()
+storeEnsembleValue <- function(values){
+  ensamble <<- rbind(
+    ensamble,values)
+}
+```
+\section{Generic Functions}
+A generic function is defined to store the preformance of each model. This is the same as I did it in the first project. It acts to store the name of a model along with some preformance chariteristics that can be viewed later on.
+```{r}
+modelPreformance <- data.frame()
+storeModelPreformance <- function(modelName, performance){
+  modelPreformance <<- rbind(
+    modelPreformance,
+    data.frame(
+      modelName,
+      performance
+    )
+  )
+}
+
+ensamble <- data.frame()
+storeEnsembleValue <- function(values){
+  ensamble <<- rbind(
+    ensamble,values)
+}
+```
+
+\section{Simple Neural network}
+First a simple nerual network is defined to show the simple use example of h2o.
+```{r, echo=T, results='hide'}
+model <- h2o.deeplearning(x = 1:10,
+                            y = 11,
+                            training_frame = datTrain_h2o,
+                            hidden = c(50,50,50),
+                            seed = 1,)
+
+yhat_train <- h2o.predict(model, datTrain_h2o)$predict
+yhat_train <- as.factor(as.matrix(yhat_train))
+yhat_validation <- h2o.predict(model, datValidation_h2o)$predict
+yhat_validation <- as.factor(as.matrix(yhat_validation))
+
+sprintf("Training accuracy: %s",
+        round(confusionMatrix(yhat_train, Blocks.train$class)$overall[1],4))
+sprintf("Validation accuracy: %s",
+        round(confusionMatrix(yhat_validation, Blocks.validation$class)$overall[1],4))
+```
+
+\section{Itterative hyper parameter search and plotting}
+
+Define a generic timer function to calculate how long training takes
+```{r}
+start_timer <- function() return(proc.time())
+stop_timer <- function(time_start) {
+  time_diff <- proc.time() - time_start
+  time_diff <- time_diff[1] + time_diff[2] + time_diff[3]
+  return(round(as.numeric(time_diff), digits = 2))
+}
+```
+
+\subsection{Core Settings for the Experiments}
+```{r}
+n_run <- 5
+n_epochs <- 50
+```
+
+\subsubsection{Vanilla Model, 50 by 3}
+```{r, echo=T, results='hide'}
+res_tmp <- data.frame(Trial = 1:n_run, Training = NA, Validation = NA, Duration = NA)
+for (n in 1:n_run) {
+  tt <- start_timer()
+  ## Train the model
+  model <- h2o.deeplearning(x = 1:10,
+                            y = 11,
+                            training_frame = datTrain_h2o,
+                            hidden = c(50,50,50),
+                            seed = 1,
+                            epochs = n_epochs)
+  
+  ## Evaluate performance
+  yhat_train <- h2o.predict(model, datTrain_h2o)$predict
+  yhat_train <- as.factor(as.matrix(yhat_train))
+  yhat_validation <- h2o.predict(model, datValidation_h2o)$predict
+  yhat_validation <- as.factor(as.matrix(yhat_validation))
+  
+  ## Store Results
+  res_tmp[n, 1] <- n
+  res_tmp[n, 2] <- round(caret::confusionMatrix(yhat_train,
+                                                Blocks.train$class)$overall[1], 4)
+  res_tmp[n, 3] <- round(caret::confusionMatrix(yhat_validation,
+                                                Blocks.validation$class)$overall[1], 4)
+  res_tmp[n, 4] <- round(stop_timer(tt), 2)
+}
+
+## Store overall results
+storeModelPreformance("Vanilla, 50 by 3", res_tmp)
+```
+\subsubsection{Vanilla Model, 200 by 3}
+```{r, echo=T, results='hide'}
+res_tmp <- data.frame(Trial = 1:n_run, Training = NA, Validation = NA, Duration = NA)
+for (n in 1:n_run) {
+  tt <- start_timer()
+  
+  ## Train the model
+  model <- h2o.deeplearning(x = 1:10,
+                              y = 11,
+                              training_frame = as.h2o(Blocks.train),
+                              hidden = c(200,200,200),
+                              seed = 1,
+                              epochs = n_epochs)
+  
+  ## Evaluate performance
+  yhat_train <- h2o.predict(model, datTrain_h2o)$predict
+  yhat_train <- as.factor(as.matrix(yhat_train))
+  yhat_validation <- h2o.predict(model, datValidation_h2o)$predict
+  yhat_validation <- as.factor(as.matrix(yhat_validation))
+  
+  ## Store Results
+  res_tmp[n, 1] <- n
+  res_tmp[n, 2] <- round(caret::confusionMatrix(yhat_train,
+                                                Blocks.train$class)$overall[1], 4)
+  res_tmp[n, 3] <- round(caret::confusionMatrix(yhat_validation,
+                                                Blocks.validation$class)$overall[1], 4)
+  res_tmp[n, 4] <- round(stop_timer(tt), 2)
+}
+
+## Store overall results
+storeModelPreformance("Vanilla, 200 by 4", res_tmp)
+storeEnsembleValue(yhat_validation)
+```
+\subsubsection{Vanilla Model, 500 by 3}
+```{r, echo=T, results='hide'}
+res_tmp <- data.frame(Trial = 1:n_run, Training = NA, Validation = NA, Duration = NA)
+for (n in 1:n_run) {
+  tt <- start_timer()
+  
+  ## Train the model
+  model <- h2o.deeplearning(x = 1:10,
+                              y = 11,
+                              training_frame = as.h2o(Blocks.train),
+                              hidden = c(500,500,500),
+                              seed = 1,
+                              epochs = n_epochs)
+  
+  ## Evaluate performance
+  yhat_train <- h2o.predict(model, datTrain_h2o)$predict
+  yhat_train <- as.factor(as.matrix(yhat_train))
+  yhat_validation <- h2o.predict(model, datValidation_h2o)$predict
+  yhat_validation <- as.factor(as.matrix(yhat_validation))
+  
+  ## Store Results
+  res_tmp[n, 1] <- n
+  res_tmp[n, 2] <- round(caret::confusionMatrix(yhat_train,
+                                                Blocks.train$class)$overall[1], 4)
+  res_tmp[n, 3] <- round(caret::confusionMatrix(yhat_validation,
+                                                Blocks.validation$class)$overall[1], 4)
+  res_tmp[n, 4] <- round(stop_timer(tt), 2)
+}
+
+## Store overall results
+storeModelPreformance("Vanilla, 500 by 3", res_tmp)
+storeEnsembleValue(yhat_validation)
+```
+\subsubsection{Vanilla Model, 200 by 4}
+```{r, echo=T, results='hide'}
+res_tmp <- data.frame(Trial = 1:n_run, Training = NA, Validation = NA, Duration = NA)
+for (n in 1:n_run) {
+  tt <- start_timer()
+  
+  ## Train the model
+  model <- h2o.deeplearning(x = 1:10,
+                              y = 11,
+                              training_frame = as.h2o(Blocks.train),
+                              hidden = c(200,200,200,200),
+                              seed = 1,
+                              epochs = n_epochs)
+  
+  ## Evaluate performance
+  yhat_train <- h2o.predict(model, datTrain_h2o)$predict
+  yhat_train <- as.factor(as.matrix(yhat_train))
+  yhat_validation <- h2o.predict(model, datValidation_h2o)$predict
+  yhat_validation <- as.factor(as.matrix(yhat_validation))
+  
+  ## Store Results
+  res_tmp[n, 1] <- n
+  res_tmp[n, 2] <- round(caret::confusionMatrix(yhat_train,
+                                                Blocks.train$class)$overall[1], 4)
+  res_tmp[n, 3] <- round(caret::confusionMatrix(yhat_validation,
+                                                Blocks.validation$class)$overall[1], 4)
+  res_tmp[n, 4] <- round(stop_timer(tt), 2)
+}
+
+## Store overall results
+storeModelPreformance("Vanilla, 200 by 4", res_tmp)
+```
+\subsubsection{Vanilla Model, 500 by 4}
+```{r, echo=T, results='hide'}
+res_tmp <- data.frame(Trial = 1:n_run, Training = NA, Validation = NA, Duration = NA)
+for (n in 1:n_run) {
+  tt <- start_timer()
+  
+  ## Train the model
+  model <- h2o.deeplearning(x = 1:10,
+                              y = 11,
+                              training_frame = as.h2o(Blocks.train),
+                              hidden = c(500,500,500,500),
+                              seed = 1,
+                              epochs = n_epochs)
+  
+  ## Evaluate performance
+  yhat_train <- h2o.predict(model, datTrain_h2o)$predict
+  yhat_train <- as.factor(as.matrix(yhat_train))
+  yhat_validation <- h2o.predict(model, datValidation_h2o)$predict
+  yhat_validation <- as.factor(as.matrix(yhat_validation))
+  
+  ## Store Results
+  res_tmp[n, 1] <- n
+  res_tmp[n, 2] <- round(caret::confusionMatrix(yhat_train,
+                                                Blocks.train$class)$overall[1], 4)
+  res_tmp[n, 3] <- round(caret::confusionMatrix(yhat_validation,
+                                                Blocks.validation$class)$overall[1], 4)
+  res_tmp[n, 4] <- round(stop_timer(tt), 2)
+}
+
+## Store overall results
+storeModelPreformance("Vanilla, 500 by 4", res_tmp)
+```
+
+\subsubsection{Tanh drop:0%/0% 50 by 3}
+```{r, echo=T, results='hide'}
+## Create an empty data frame for results
+res_tmp <- data.frame(Trial = 1:n_run, Training = NA, Validation = NA, Duration = NA)
+
+## Train model and evaluate performance for n times
+
+for (n in 1:n_run) {
+  tt <- start_timer()
+  
+  ## Train the model
+  model <- h2o.deeplearning(x = 1:10,  # column numbers for predictors
+                            y = 11,   # column number for label
+                            training_frame = datTrain_h2o,
+                            activation = "Tanh",
+                            balance_classes = TRUE,
+                            hidden = c(50,50,50),  ## three hidden layers
+                            #nfolds = 10,
+                            epochs = n_epochs)
+  
+  ## Evaluate performance
+  yhat_train <- h2o.predict(model, datTrain_h2o)$predict
+  yhat_train <- as.factor(as.matrix(yhat_train))
+  yhat_validation <- h2o.predict(model, datValidation_h2o)$predict
+  yhat_validation <- as.factor(as.matrix(yhat_validation))
+  
+  ## Store Results
+  res_tmp[n, 1] <- n
+  res_tmp[n, 2] <- round(caret::confusionMatrix(yhat_train,
+                                                Blocks.train$class)$overall[1], 4)
+  res_tmp[n, 3] <- round(caret::confusionMatrix(yhat_validation,
+                                                Blocks.validation$class)$overall[1], 4)
+  res_tmp[n, 4] <- round(stop_timer(tt), 2)
+}
+
+## Store overall results
+storeModelPreformance("Tanh drop:0%/0% 50 by 3", res_tmp)
+
+```
+
+
+\subsubsection{Tanh drop:0%/50%, 50 by 3}
+```{r, echo=T, results='hide'}
+## Create an empty data frame for results
+res_tmp <- data.frame(Trial = 1:n_run, Training = NA, Validation = NA, Duration = NA)
+
+for (n in 1:n_run) {
+  tt <- start_timer()
+  
+  model <- h2o.deeplearning(x = 1:10,  # column numbers for predictors
+                            y = 11,   # column number for label
+                            training_frame = datTrain_h2o,
+                            activation = "TanhWithDropout",
+                            input_dropout_ratio = 0,
+                            hidden_dropout_ratios = c(0.5,0.5,0.5),
+                            balance_classes = TRUE,
+                            hidden = c(50,50,50),  ## three hidden layers
+                            epochs = n_epochs)
+  
+  yhat_train <- h2o.predict(model, datTrain_h2o)$predict
+  yhat_train <- as.factor(as.matrix(yhat_train))
+  yhat_validation <- h2o.predict(model, datValidation_h2o)$predict
+  yhat_validation <- as.factor(as.matrix(yhat_validation))
+  
+  res_tmp[n, 1] <- n
+  res_tmp[n, 2] <- round(confusionMatrix(yhat_train,
+                                         Blocks.train$class)$overall[1], 4)
+  res_tmp[n, 3] <- round(confusionMatrix(yhat_validation,
+                                         Blocks.validation$class)$overall[1], 4)
+  res_tmp[n, 4] <- round(stop_timer(tt), 2)
+}
+
+res_b <- data.frame(Model = "Tanh drop:0%/50%, 50 by 3", res_tmp[, -1])
+```
+
+\subsubsection{Tanh drop:10%/50%, 50 by 3}
+```{r, echo=T, results='hide'}
+res_tmp <- data.frame(Trial = 1:n_run, Training = NA, Validation = NA, Duration = NA)
+
+for (n in 1:n_run) {
+  tt <- start_timer()
+  
+  ## Train the model
+  model <- h2o.deeplearning(x = 1:10,  # column numbers for predictors
+                            y = 11,   # column number for label
+                            training_frame = datTrain_h2o,
+                            activation = "TanhWithDropout",
+                            input_dropout_ratio = 0.1,
+                            hidden_dropout_ratios = c(0.5,0.5,0.5),
+                            balance_classes = TRUE,
+                            hidden = c(50,50,50),  ## three hidden layers
+                            epochs = n_epochs)
+  
+  yhat_train <- h2o.predict(model, datTrain_h2o)$predict
+  yhat_train <- as.factor(as.matrix(yhat_train))
+  yhat_validation <- h2o.predict(model, datValidation_h2o)$predict
+  yhat_validation <- as.factor(as.matrix(yhat_validation))
+  
+  res_tmp[n, 1] <- n
+  res_tmp[n, 2] <- round(confusionMatrix(yhat_train,
+                                         Blocks.train$class)$overall[1], 4)
+  res_tmp[n, 3] <- round(confusionMatrix(yhat_validation,
+                                         Blocks.validation$class)$overall[1], 4)
+  res_tmp[n, 4] <- round(stop_timer(tt), 2)
+}
+
+storeModelPreformance("Tanh drop:10%/50%, 50 by 3", res_tmp)
+```
+
+\subsubsection{Tanh drop:20%/50%, 50 by 3}
+```{r, echo=T, results='hide'}
+res_tmp <- data.frame(Trial = 1:n_run, Training = NA, Validation = NA, Duration = NA)
+for (n in 1:n_run) {
+  tt <- start_timer()
+  
+  model <- h2o.deeplearning(x = 1:10,  # column numbers for predictors
+                            y = 11,   # column number for label
+                            training_frame  = datTrain_h2o,
+                            activation = "TanhWithDropout",
+                            input_dropout_ratio = 0.2,
+                            hidden_dropout_ratios = c(0.5,0.5,0.5),
+                            balance_classes = TRUE,
+                            hidden = c(50,50,50),  ## three hidden layers
+                            epochs = n_epochs)
+  
+  
+  yhat_train <- h2o.predict(model, datTrain_h2o)$predict
+  yhat_train <- as.factor(as.matrix(yhat_train))
+  yhat_validation <- h2o.predict(model, datValidation_h2o)$predict
+  yhat_validation <- as.factor(as.matrix(yhat_validation))
+  
+  
+  res_tmp[n, 1] <- n
+  res_tmp[n, 2] <- round(confusionMatrix(yhat_train,
+                                         Blocks.train$class)$overall[1], 4)
+  res_tmp[n, 3] <- round(confusionMatrix(yhat_validation,
+                                         Blocks.validation$class)$overall[1], 4)
+  res_tmp[n, 4] <- round(stop_timer(tt), 2)
+  
+}
+storeModelPreformance("Tanh drop:20%/50%, 50 by 3", res_tmp)
+```
+
+\subsubsection{Early stop, 50 by 3}
+```{r, echo=T, results='hide'}
+res_tmp <- data.frame(Trial = 1:n_run, Training = NA, Validation = NA, Duration = NA)
+
+for (n in 1:n_run) {
+  tt <- start_timer()
+  
+  ## Train the model
+  model <- h2o.deeplearning(x = 1:10,
+                              y = 11,
+                              training_frame = as.h2o(Blocks.train),
+                              hidden = c(50,50,50),
+                              seed = 1,
+                              epochs = n_epochs,
+                              nfolds = 3,                            #used for early stopping
+                              score_interval = 1,                    #used for early stopping
+                              stopping_rounds = 5,                   #used for early stopping
+                              stopping_metric = "misclassification", #used for early stopping
+                              stopping_tolerance = 1e-3,             #used for early stopping
+                              )
+  
+  yhat_train <- h2o.predict(model, datTrain_h2o)$predict
+  yhat_train <- as.factor(as.matrix(yhat_train))
+  yhat_validation <- h2o.predict(model, datValidation_h2o)$predict
+  yhat_validation <- as.factor(as.matrix(yhat_validation))
+  
+  res_tmp[n, 1] <- n
+  res_tmp[n, 2] <- round(confusionMatrix(yhat_train,
+                                         Blocks.train$class)$overall[1], 4)
+  res_tmp[n, 3] <- round(confusionMatrix(yhat_validation,
+                                         Blocks.validation$class)$overall[1], 4)
+  res_tmp[n, 4] <- round(stop_timer(tt), 2)
+}
+
+storeModelPreformance("Early stop, 50 by 3", res_tmp)
+storeEnsembleValue(yhat_validation)
+```
+
+\subsection{Rand grid, 50 by 3}
+```{r, echo=T, results='hide'}
+res_tmp <- data.frame(Trial = 1:n_run, Training = NA, Validation = NA, Duration = NA)
+
+  for (n in 1:n_run) {
+    tt <- start_timer()
+    
+   activation_opt <- c("Rectifier", "Maxout", "Tanh")
+  l1_opt <- c(0, 0.00001, 0.0001, 0.001, 0.01)
+  l2_opt <- c(0, 0.00001, 0.0001, 0.001, 0.01)
+  
+  hyper_params <- list(activation = activation_opt, l1 = l1_opt, l2 = l2_opt)
+  search_criteria <- list(strategy = "RandomDiscrete", max_runtime_secs = 60)
+  
+  splits <- h2o.splitFrame(as.h2o(Blocks.train), ratios = 0.8, seed = 1)
+  
+  dl_grid <- h2o.grid("deeplearning",
+                      x = 1:10,
+                      y = 11,
+                      grid_id = "dl_grid",
+                      training_frame = splits[[1]],
+                      validation_frame = splits[[2]],
+                      seed = 1,
+                      epochs = n_epochs,
+                      hidden = c(50,50,50),
+                      hyper_params = hyper_params,
+                      search_criteria = search_criteria)
+  
+  dl_gridperf <- h2o.getGrid(grid_id = "dl_grid", 
+                             sort_by = "accuracy", 
+                             decreasing = TRUE)
+  print(dl_gridperf)
+  
+  best_dl_model_id <- dl_gridperf@model_ids[[1]]
+  model <- h2o.getModel(best_dl_model_id)
+
+  yhat_train <- h2o.predict(model, datTrain_h2o)$predict
+  yhat_train <- as.factor(as.matrix(yhat_train))
+  yhat_validation <- h2o.predict(model, datValidation_h2o)$predict
+  yhat_validation <- as.factor(as.matrix(yhat_validation))
+  
+  res_tmp[n, 1] <- n
+  res_tmp[n, 2] <- round(confusionMatrix(yhat_train,
+                                         Blocks.train$class)$overall[1], 4)
+  res_tmp[n, 3] <- round(confusionMatrix(yhat_validation,
+                                         Blocks.validation$class)$overall[1], 4)
+  res_tmp[n, 4] <- round(stop_timer(tt), 2)
+}
+
+storeModelPreformance("Rand grid, 50 by 3", res_tmp)
+storeEnsembleValue(yhat_validation)
+```
+
+\section{Results output and plotting}
+Print average results in a table. this acts like an `AVG` then `ORDERY`  in `SQL`.
+```{r}
+aggrigated <- aggregate(modelPreformance[,3:5], list(modelPreformance$modelName), mean)
+aggrigated[order(aggrigated$Training, decreasing = TRUE),]
+```
+
+\section{Model vizualization}
+```{r}
+
+res_acc <- melt(modelPreformance,
+                id.vars = c('modelName'),
+                measure.vars = c('Training', 'Validation'))
+
+res_time <- melt(modelPreformance,
+                 id.vars = c('modelName'),
+                 measure.vars = c('Duration'))
+
+## Prediction Accuracy
+ggplot(data = res_acc,
+       aes(x = reorder(modelName, value, mean), y = value, fill = modelName)) +
+  geom_boxplot() +
+  facet_grid(~ variable) +
+  ylab("Performance: Prediction Accuracy (%)")+
+  coord_flip() +
+  guides(fill = FALSE, color = FALSE, linetype = FALSE, shape = FALSE)+
+  theme_bw()
+
+## Time Required for Training
+ggplot(data = res_time,
+       aes(x = reorder(modelName,value, mean), y = value, fill = modelName)) +
+  geom_boxplot() +
+  ylab("Time Required for Training (Seconds)")+
+    coord_flip() +
+  guides(fill = FALSE, color = FALSE, linetype = FALSE, shape = FALSE)+
+  theme_bw()
+
+```
+
+\section{Refined Vizualization}
+Remove all the rows that have the word dropout in them as these were bad preformers on the preformance and and remove all the rows that have random grid or the c(500,500,500,500) layered as these were bad preformeres in the training time.
+```{r}
+res_acc <- melt(modelPreformance[!grepl('drop', modelPreformance$modelName),],
+                id.vars = c('modelName'),
+                measure.vars = c('Training', 'Validation'))
+
+
+res_time <- melt(modelPreformance[!(grepl('Rand grid', modelPreformance$modelName)
+                                    + grepl('500', modelPreformance$modelName)),],
+                 id.vars = c('modelName'),
+                 measure.vars = c('Duration'))
+
+## Prediction Accuracy
+ggplot(data = res_acc,
+       aes(x = reorder(modelName, value, mean), y = value, fill = modelName)) +
+  geom_boxplot() +
+  facet_grid(~ variable) +
+  ylab("Performance: Prediction Accuracy (%)")+
+  coord_flip() +
+  guides(fill = FALSE, color = FALSE, linetype = FALSE, shape = FALSE)+
+  theme_bw()
+
+## Time Required for Training
+ggplot(data = res_time,
+       aes(x = reorder(modelName,value, mean), y = value, fill = modelName)) +
+  geom_boxplot() +
+  ylab("Time Required for Training (Seconds)")+
+    coord_flip() +
+  guides(fill = FALSE, color = FALSE, linetype = FALSE, shape = FALSE)+
+  theme_bw()
+```
+
+```{r}
+write.csv(ensamble, "EnsambleVotesQuestion2.csv")
+```
+

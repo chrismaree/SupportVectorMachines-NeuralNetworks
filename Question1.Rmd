@@ -1,0 +1,363 @@
+---
+title: "Assignment 2, question 1"
+output:
+  pdf_document: default
+  html_notebook: default
+editor_options:
+  chunk_output_type: inline
+---
+This appendix stores all the code for implemented Support Vector Machine (SVMs) in R. Each section corresponds to a part of the discussion both directly and indirectly of that done in the main body of the report.
+
+\section{Setup and basic data processing}
+First all the required libraries are installed and data is imported.
+```{r}
+#setup work space, install packages and import libs
+suppressMessages(library(e1071))
+suppressMessages(library(kernlab))
+suppressMessages(library(caret))
+suppressMessages(library(ggplot2))
+suppressMessages(library(reshape2))
+rm(list=ls())
+fulldata <- read.csv("blocksTrain.csv")
+fulldata <- fulldata[, -1]
+```
+Next, data processing to define the training and validation sets.
+```{r}
+#convert class to a factor
+fulldata$class <- as.factor(fulldata$class)
+#normalize variables
+fulldata[,1:10] <- scale(fulldata[,1:10])
+#extract traning and validation stes
+set.seed(42)
+train <- sample(seq_len(nrow(fulldata)),
+                size = ceiling(dim(fulldata)[1]*0.8)) #~80% of the set
+Blocks.train <- fulldata[train, ] 
+Blocks.validation <- fulldata[-train, ]
+```
+
+
+\section{Generic functions}
+Next generic functions are defined to store model building accuracy.
+```{r}
+modelPreformance <- data.frame()
+storeModelPreformance <- function(modelName, performance){
+  modelPreformance <<- rbind(
+    modelPreformance,
+    data.frame(
+      modelName,
+      performance
+    )
+  )
+}
+
+ensamble <- data.frame()
+storeEnsembleValue <- function(values){
+  ensamble <<- rbind(
+    ensamble,values)
+}
+```
+
+
+The use of the confusionMatrix function from caret is the same as generating a table type confusion matrix. Syntactically this would look like this:
+`tab <- table(pred = svm.pred, true = Blocks.train$class)`
+to get the accuracy one would use this: `sum(diag(tab))/sum(tab)`. Miss classification rate would be 1-this number
+
+```{r}
+simple.svm <- svm(class~.,
+                  data = Blocks.train,
+                  kernel = "radial",
+                  gamma = 1,
+                  cost = 1)
+svm.pred <- predict(simple.svm, Blocks.validation)
+confusionMatrix(svm.pred, Blocks.validation$class)
+```
+
+\section{Itterative hyper parameter search and plotting}
+
+Define a generic timer function to calculate how long training takes
+```{r}
+start_timer <- function() return(proc.time())
+stop_timer <- function(time_start) {
+  time_diff <- proc.time() - time_start
+  time_diff <- time_diff[1] + time_diff[2] + time_diff[3]
+  return(round(as.numeric(time_diff), digits = 2))
+}
+```
+
+
+Next, a number of diffrent kernals are experimented with and stored in a data structure plot later.
+```{r}
+tt <- start_timer()
+## Train the model
+model <- svm(class~.,
+                data = Blocks.train,
+                kernel = "radial",
+                gamma = 1,
+                cost = 1)
+
+## Evaluate performance
+yhat_train <- predict(model, Blocks.train)
+yhat_validation <- predict(model, Blocks.validation)
+
+
+results <- data.frame(Training = round(confusionMatrix(yhat_train,
+                                                       Blocks.train$class)$overall[1], 4),
+                      Validation = round(confusionMatrix(yhat_validation,
+                                                         Blocks.validation$class)$overall[1], 4),
+                      Duration = round(stop_timer(tt), 2))
+storeModelPreformance("SVM Radial", results)
+```
+
+```{r}
+tt <- start_timer()
+## Train the model
+model <- svm(class~.,
+                  data = Blocks.train,
+                  kernel = "polynomial",
+                  gamma = 1,
+                  cost = 1)
+
+## Evaluate performance
+yhat_train <- predict(model, Blocks.train)
+yhat_validation <- predict(model, Blocks.validation)
+
+
+results <- data.frame(Training = round(confusionMatrix(yhat_train,
+                                                       Blocks.train$class)$overall[1], 4),
+                      Validation = round(confusionMatrix(yhat_validation,
+                                                         Blocks.validation$class)$overall[1], 4),
+                      Duration = round(stop_timer(tt), 2))
+storeModelPreformance("SVM polynomial", results)
+storeEnsembleValue(yhat_validation)
+```
+
+```{r}
+tt <- start_timer()
+## Train the model
+model <- svm(class~.,
+                  data = Blocks.train,
+                  kernel = "sigmoid",
+                  gamma = 1,
+                  cost = 1)
+
+## Evaluate performance
+yhat_train <- predict(model, Blocks.train)
+yhat_validation <- predict(model, Blocks.validation)
+
+
+results <- data.frame(Training = round(confusionMatrix(yhat_train,
+                                                       Blocks.train$class)$overall[1], 4),
+                      Validation = round(confusionMatrix(yhat_validation,
+                                                         Blocks.validation$class)$overall[1], 4),
+                      Duration = round(stop_timer(tt), 2))
+storeModelPreformance("SVM sigmoid", results)
+```
+
+```{r}
+tt <- start_timer()
+## Train the model
+model <- ksvm(class~.,
+                  data = Blocks.train,
+                  type = "C-svc",
+                  kernel = 'anovadot',
+                  C = 1, scaled = c())
+
+## Evaluate performance
+yhat_train <- predict(model, Blocks.train)
+yhat_validation <- predict(model, Blocks.validation)
+
+
+results <- data.frame(Training = round(confusionMatrix(yhat_train,
+                                                       Blocks.train$class)$overall[1], 4),
+                      Validation = round(confusionMatrix(yhat_validation,
+                                                         Blocks.validation$class)$overall[1], 4),
+                      Duration = round(stop_timer(tt), 2))
+storeModelPreformance("KSVM anovadot", results)
+```
+
+```{r}
+tt <- start_timer()
+## Train the model
+model <- ksvm(class~.,
+                  data = Blocks.train,
+                  type = "C-svc",
+                  kernel = 'splinedot',
+                  C = 1, scaled = c())
+
+## Evaluate performance
+yhat_train <- predict(model, Blocks.train)
+yhat_validation <- predict(model, Blocks.validation)
+
+
+results <- data.frame(Training = round(confusionMatrix(yhat_train,
+                                                       Blocks.train$class)$overall[1], 4),
+                      Validation = round(confusionMatrix(yhat_validation,
+                                                         Blocks.validation$class)$overall[1], 4),
+                      Duration = round(stop_timer(tt), 2))
+storeModelPreformance("KSVM splinedot", results)
+```
+
+```{r}
+tt <- start_timer()
+## Train the model
+model <- ksvm(class~.,
+                 data = Blocks.train,
+                 type = "C-svc",
+                 kernel = 'tanhdot',
+                 C = 1,
+                 scaled = c())
+
+## Evaluate performance
+yhat_train <- predict(model, Blocks.train)
+yhat_validation <- predict(model, Blocks.validation)
+
+results <- data.frame(Training = round(confusionMatrix(yhat_train,
+                                                       Blocks.train$class)$overall[1], 4),
+                      Validation = round(confusionMatrix(yhat_validation,
+                                                         Blocks.validation$class)$overall[1], 4),
+                      Duration = round(stop_timer(tt), 2))
+storeModelPreformance("KSVM tanhdot", results)
+```
+
+
+Print average results in a table. Order by training
+```{r}
+modelPreformance[order(modelPreformance$Training),]
+```
+
+Lastly create some graphs for our results!
+```{r}
+
+res_acc <- melt(modelPreformance,
+                id.vars = c('modelName'),
+                measure.vars = c('Training', 'Validation'))
+
+res_time <- melt(modelPreformance,
+                 id.vars = c('modelName'),
+                 measure.vars = c('Duration'))
+
+## Prediction Accuracy
+ggplot(data = res_acc,
+       aes(x = reorder(modelName, value, mean), y = value, fill = modelName)) +
+  geom_bin2d() +
+  facet_grid(~ variable) +
+  ylab("Performance: Prediction Accuracy (%)")+
+  coord_flip() +
+  guides(fill = FALSE, color = FALSE, linetype = FALSE, shape = FALSE)+
+  theme_bw()
+
+## Time Required for Training
+ggplot(data = res_time,
+       aes(x = reorder(modelName,value, mean), y = value, fill = modelName)) +
+  geom_bin2d() +
+  ylab("Time Required for Training (Seconds)")+
+    coord_flip() +
+  guides(fill = FALSE, color = FALSE, linetype = FALSE, shape = FALSE)+
+  theme_bw()
+```
+
+Tuning or Hyper parameter optomization.
+
+If the cost is too high then it will mean a high penalty for non-seperable points and as a result the model may store too many support vectors which will lead to over fitting. however, if the cost value is too small then the model may end up with too few support vectors and the model then will not be accurate.
+
+The $\gamma$ (gamma) has to be tuned to better fit the hyperplane to the data.  It is responsible for the linearity degree of the hyperplane, and for that, it is not present when using linear kernels. The smaller $\gamma$ is, the more the hyperplane is going to look like a straight line. If $\gamma$ is too great, the hyperplane will be more curvy and might delineate the data too well and lead to overfitting.
+
+We also plot the tune output. Darker regions represent lower misclasification error.
+
+```{r}
+tt <- start_timer()
+tune.out <- tune(svm, class~.,
+                 data = Blocks.train,
+                 kernel = "polynomial",
+                 ranges = list(gamma = c(2^-13,2^-2), cost = c(2^-0,2^13)))
+
+plot(tune.out)
+
+# show best model
+best.model <- tune.out$best.model
+yhat_train <- predict(best.model, Blocks.train)
+yhat_validation <- predict(best.model, Blocks.validation)
+storeEnsembleValue(yhat_validation) # store the votes from this model to form part of the ensamble selection
+
+results <- data.frame(Training = round(confusionMatrix(yhat_train,
+                                                       Blocks.train$class)$overall[1], 4),
+                      Validation = round(confusionMatrix(yhat_validation,
+                                                         Blocks.validation$class)$overall[1], 4),
+                      Duration = round(stop_timer(tt), 2))
+storeModelPreformance("Tuned SVM polynomial", results)
+```
+
+We can also try using the caret train function to expand over a grid of posible values.
+```{r}
+library(caret)
+library(caretEnsemble)
+tt <- start_timer()
+TrainCtrl1 <- trainControl(method = "repeatedcv",
+                           number = 5,
+                           repeats = 1,
+                           verbose = FALSE)
+SVMgrid <- expand.grid(sigma = 2^(-14:-4),
+                       C = 10^(0:6))
+
+modelSvmRRB <- train(class~.,
+                     data = Blocks.train,
+                     method="svmRadial",
+                     trControl=TrainCtrl1,
+                     tuneGrid = SVMgrid,
+                     verbose=FALSE)
+plot(modelSvmRRB)
+
+best.model <- modelSvmRRB$finalModel
+yhat_train <- predict(modelSvmRRB, Blocks.train)
+yhat_validation <- predict(modelSvmRRB, Blocks.validation)
+storeEnsembleValue(yhat_validation) # store the votes from this model to form part of the ensamble selection
+
+results <- data.frame(Training = round(confusionMatrix(yhat_train,
+                                                       Blocks.train$class)$overall[1], 4),
+                      Validation = round(confusionMatrix(yhat_validation,
+                                                         Blocks.validation$class)$overall[1], 4),
+                      Duration = round(stop_timer(tt), 2))
+storeModelPreformance("Caret SVM, tuned radial", results)
+```
+
+Print average results in a table. Order by training
+```{r}
+modelPreformance[order(modelPreformance$Training, decreasing = TRUE),]
+```
+
+Lastly create some graphs for our results!
+```{r}
+res_acc <- melt(modelPreformance,
+                id.vars = c('modelName'),
+                measure.vars = c('Training', 'Validation'))
+
+res_time <- melt(modelPreformance,
+                 id.vars = c('modelName'),
+                 measure.vars = c('Duration'))
+
+## Prediction Accuracy
+ggplot(data = res_acc,
+       aes(x = reorder(modelName, value, mean), y = value, fill = modelName)) +
+  geom_bin2d() +
+  facet_grid(~ variable) +
+  ylab("Performance: Prediction Accuracy (%)")+
+  xlab("Model")+
+  coord_flip() +
+  guides(fill = FALSE, color = FALSE, linetype = FALSE, shape = FALSE)+
+  theme_bw()
+
+## Time Required for Training
+ggplot(data = res_time,
+       aes(x = reorder(modelName,value, mean), y = value, fill = modelName)) +
+  geom_bin2d() +
+  ylab("Time Required for Training (Seconds)")+
+  xlab("Model")+
+    coord_flip() +
+  guides(fill = FALSE, color = FALSE, linetype = FALSE, shape = FALSE)+
+  theme_bw()
+```
+
+```{r}
+write.csv(ensamble, "EnsambleVotesQuestion1.csv")
+```
+
