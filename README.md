@@ -1,8 +1,2 @@
 # SupportVectorMachines-NeuralNetworks
-This report looks at implementations of Support Vector Machines and Neural Networks in R as classification algorithms for page layout in documents. 
-
-http://htmlpreview.github.io/?https://github.com/chrismaree/SupportVectorMachines-NeuralNetworks/blob/master/EnsembleBuilder.nb.html
-
-http://htmlpreview.github.io/?https://github.com/chrismaree/SupportVectorMachines-NeuralNetworks/blob/master/Question1.nb.html
-
-http://htmlpreview.github.io/?https://github.com/chrismaree/SupportVectorMachines-NeuralNetworks/blob/master/Question2.nb.html
+This report looks at implementations of Support Vector Machines and Neural Networks in R as classification algorithms for page layout in documents. Check out the PDF report for implementation detials and the theory behind the code. The source code can be viewed online [here](http://htmlpreview.github.io/?https://github.com/chrismaree/SupportVectorMachines-NeuralNetworks/blob/master/Question1.nb.html), [here](http://htmlpreview.github.io/?https://github.com/chrismaree/SupportVectorMachines-NeuralNetworks/blob/master/Question2.nb.html) and [here](http://htmlpreview.github.io/?https://github.com/chrismaree/SupportVectorMachines-NeuralNetworks/blob/master/EnsembleBuilder.nb.html) for each section of the report 🚀.
